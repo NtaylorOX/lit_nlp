@@ -46,6 +46,9 @@ from lit_nlp.lib import utils
 
 import torch
 import transformers
+import os
+
+os.environ['CUDA_VISIBLE_DEVICES']=''
 
 # NOTE: additional flags defined in server_flags.py
 
@@ -98,7 +101,7 @@ class SimpleSentimentModel(lit_model.Model):
     # This tells lit_model.Model.predict() how to batch inputs to
     # predict_minibatch().
     # Alternately, you can just override predict() and handle batching yourself.
-    return 32
+    return 2
 
   def predict_minibatch(self, inputs):
     # Preprocess to ids and masks, and make the input batch.
@@ -109,12 +112,16 @@ class SimpleSentimentModel(lit_model.Model):
         max_length=128,
         padding="longest",
         truncation="longest_first")
-
+    print(f"encoded input is: {encoded_input}")
     # Check and send to cuda (GPU) if available
     if torch.cuda.is_available():
+      print(f"cuda avaialble!")
       self.model.cuda()
       for tensor in encoded_input:
+        print(f"tensor is: {tensor}")
         encoded_input[tensor] = encoded_input[tensor].cuda()
+
+    print(f"encoded input after passing to cuda is: {encoded_input}")
     # Run a forward pass.
     with torch.no_grad():  # remove this if you need gradients.
       out: transformers.modeling_outputs.SequenceClassifierOutput = \
@@ -127,10 +134,13 @@ class SimpleSentimentModel(lit_model.Model):
         "ntok": torch.sum(encoded_input["attention_mask"], dim=1),
         "cls_emb": out.hidden_states[-1][:, 0],  # last layer, first token
     }
+
+    print(f"Batched outputs are: {batched_outputs}")
     # Return as NumPy for further processing.
     detached_outputs = {k: v.cpu().numpy() for k, v in batched_outputs.items()}
     # Unbatch outputs so we get one record per input example.
     for output in utils.unbatch_preds(detached_outputs):
+      print(f"output in unbatch: {output}")
       ntok = output.pop("ntok")
       output["tokens"] = self.tokenizer.convert_ids_to_tokens(
           output.pop("input_ids")[1:ntok - 1])
